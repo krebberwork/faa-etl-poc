@@ -1,0 +1,11 @@
+sftp:
+  host: "eksprod.tools.mulesoft.com"
+  port: "30590"
+  username: "john"
+  password: "FuA_OBkks0EL4zYQ"
+sqlServer:
+  host: "eksprod.tools.mulesoft.com"
+  port: "30604"
+  username: "sa"
+  password: "FuA_OBkks0EL4zYQ"
+  

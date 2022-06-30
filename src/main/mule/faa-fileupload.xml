@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<configuration-properties doc:name="Configuration properties" doc:id="838c4639-deed-48d7-8b57-0c6535b7c595" file="configuration/config.yaml" />
+	<sftp:config name="SFTP_Config" doc:name="SFTP Config" doc:id="7ee3d8d2-5055-46c0-a631-3e4dd5b0258c" >
+		<sftp:connection host="${sftp.host}" port="${sftp.port}" username="${sftp.username}" password="${sftp.password}" />
+	</sftp:config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="6913ee9d-3bd1-468b-81fb-e349e2981bd9" >
+		<db:mssql-connection host="${sqlServer.host}" port="${sqlServer.port}" user="${sqlServer.username}" password="${sqlServer.password}" databaseName="master"/>
+	</db:config>
+	<flow name="faa-ExcelfileuploadFlow" doc:id="34e702a6-15bc-4714-a7c7-080c3b8c75f1" >
+		<sftp:listener doc:name="On New or Updated File" doc:id="afa8d792-7327-40e9-a93e-97af48459350" config-ref="SFTP_Config" outputMimeType="application/xlsx" directory="/upload" autoDelete="true">
+			<scheduling-strategy>
+				<fixed-frequency frequency="10" timeUnit="SECONDS"/>
+			</scheduling-strategy>
+			<sftp:matcher filenamePattern="*.xlsx" />
+		</sftp:listener>
+		<ee:transform doc:name="Convert Excel to Java" doc:id="8b01d6da-45e0-4892-b8df-53ee2a08c7f7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload.Sheet1
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<batch:job jobName="faa-fileuploadBatch_Job" doc:id="c9d4ee7a-c77a-4ec0-bd2c-d2d6ada5159f" >
+			<batch:process-records >
+				<batch:step name="Valdiation_Step" doc:id="97ac8c2c-fd9c-44be-b2c5-e09092857d50" >
+					<validation:is-not-blank-string doc:name="Airline Is not blank string" doc:id="61e5901c-f7c4-47b3-865a-2d05a0c3ecfe" value="#[payload.airline]"/>
+					<validation:is-number numberType="SHORT" doc:name="Valid price" doc:id="9c1203dd-66be-4812-8192-a48d180416e4" value="#[payload.price]" minValue="0"/>
+					<logger level="INFO" doc:name="Logger" doc:id="2e0f11c8-e3fa-4536-9e2b-754c1c0deec4" message="#[payload]"/>
+				</batch:step>
+				<batch:step name="Write_To_Staging_Table_Step" doc:id="d374f3e1-f173-4b35-a271-bb3897640014" >
+					<batch:aggregator doc:name="Batch Aggregator" doc:id="d4625598-cc9d-4453-8261-70db96d07881" size="10">
+						<db:bulk-insert doc:name="Bulk insert" doc:id="639cb73d-3977-43da-930e-9191efa9a364" config-ref="Database_Config">
+							<db:sql ><![CDATA[insert into dbo.flights (airline,flightCode,fromAirportCode,toAirportCode,departureDate,price,planeType)
+values (:airline,:flightCode,:fromAirportCode,:toAirportCode,:departureDate,:price,:planeType);
+]]></db:sql>
+						</db:bulk-insert>
+					</batch:aggregator>
+				</batch:step>
+			</batch:process-records>
+			<batch:on-complete >
+				<logger level="INFO" doc:name="Logger" doc:id="0bfe05e6-c87f-448d-b67a-232731cb1809" />
+			</batch:on-complete>
+		</batch:job>
+		<logger level="INFO" doc:name="Logger" doc:id="c54f55c1-d154-466c-86b5-aef3426bdf12" />
+	</flow>
+</mule>
